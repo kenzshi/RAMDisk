@@ -138,7 +138,7 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	//eprintk("Should process request...\n");
 
 	//Read/Write functionality
-	int size = req->current_nr_sectors * SECTOR_SIZE;
+	unsigned int size = req->current_nr_sectors * SECTOR_SIZE;
 	int offset = req->sector * SECTOR_SIZE;
 	if(rq_data_dir(req)==READ)
 		memcpy(req->buffer,d->data + offset,size);
@@ -206,13 +206,13 @@ static int clear_locks(struct file* filp, osprd_info_t* d, int filp_writable)
 	if(filp_writable){
 		d->write_lock = 0; //We no longer have a write lock
 		d->write_pid = -1; //Reset WRITE PID
-		wake_up_all(&d->blockq);
+		//wake_up_all(&d->blockq);
 	}
 	else {
 		d->read_locks--;
 		//Remove this PID from our list
 		remove_pid(d->read_pids);
-		wake_up_all(&d->blockq);
+		//wake_up_all(&d->blockq);
 	}
 	filp->f_flags &= !F_OSPRD_LOCKED;
 	wake_up_all(&d->blockq);
@@ -343,12 +343,12 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Your code here (instead of the next two lines).
 		//eprintk("Attempting to acquire\n");
 
+		//Begin by locking the mutex
+		osp_spin_lock(&d->mutex);
 		//Avoid deadlock by returning if current pid is our write lock's pid
 		if(current->pid == d->write_pid)
 			return -EDEADLK;
 
-		//Begin by locking the mutex
-		osp_spin_lock(&d->mutex);
 		//Assign current ticket to the head and increment the head
 		unsigned current_ticket = d->ticket_head;
 		d->ticket_head++;
@@ -411,7 +411,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 				if(d->write_pid == current->pid)
                 {
                     osp_spin_unlock(&d->mutex);
-                    return -EDEADLK;
+                    return -EBUSY;
                 }
                 else
                 {
